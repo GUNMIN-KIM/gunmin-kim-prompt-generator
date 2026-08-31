@@ -166,10 +166,10 @@ function readJson<T>(response: { choices?: Array<{ message?: { content?: unknown
 function presetInstruction(model: (typeof modelPresets)[number]): string {
   const instructions: Record<(typeof modelPresets)[number], string> = {
     general: "장면, 피사체, 액션, 카메라, 조명, 품질 제약을 균형 잡힌 하나의 제작용 프롬프트로 구성합니다.",
-    seedance: "시간대별 장면 전개를 분명히 하고, 각 구간의 주체·행동·카메라를 짧고 연속적인 샷 언어로 정렬합니다. 프레임 간 일관성 제약을 명시합니다.",
+    seedance: "Seedance용 멀티모달 디렉터 프롬프트로 작성합니다. 각 Image/Video 참조에 하나의 역할을 부여하고 @Image 1처럼 명시합니다. 멀티샷이면 [Shot 1], [Shot 2] 순서로 구성하고 컷이 발생하는 시점을 초 단위로 표시하며, 각 샷에 피사체 행동·카메라 이동·구도 변화를 하나의 연속된 동작으로 씁니다. 참조에서 유지할 인물·소품·공간과 새로 바꿀 요소를 분리하고, 복잡한 상호작용도 원인→행동→결과 순서로 정리합니다. 사용자가 요청한 경우에만 대사·환경음·음악을 장면 흐름에 동기화합니다.",
     kling: "피사체의 행동 순서, 렌즈 관점, 카메라 동작, 물리적으로 자연스러운 모션을 선명한 명령형 문장으로 우선합니다. 장면마다 카메라 주동작은 하나만 둡니다.",
     veo: "시네마틱한 장면 설정, 행동의 원인과 결과, 명확한 시간 전개, 촬영 의도, 분위기와 환경음을 포함하는 서술형 프롬프트로 구성합니다.",
-    hailuo: "핵심 피사체, 단일 행동 흐름, 시각 스타일, 카메라와 조명을 간결하고 직접적인 문장으로 우선 배치하고 불필요한 추상어는 줄입니다.",
+    hailuo: "MiniMax H3 전용 구조로 작성합니다. 참조가 있으면 프롬프트 첫 부분에 각 파일의 역할을 @Image 1, @Video 1 형식으로 선언하고, 그 다음 한 문장의 핵심 콘셉트와 시간 순서의 샷별 행동을 작성합니다. 출력은 integrated_multimodal_description, overall_soundscape, non_diegetic_music 세 구역을 명확히 구분합니다. 첫/마지막 프레임 작업은 프레임 정렬 지시를 첫 줄에 두고, 샷마다 보이는 행동·카메라 이동·대사·화면 텍스트를 구체적으로 씁니다. 카메라 용어는 Push In, Pan, Tracking Shot처럼 명확히 쓰고, 음향은 인물이 듣는 소리와 관객만 듣는 음악을 분리합니다.",
   };
   return instructions[model];
 }
@@ -295,7 +295,7 @@ export const appRouter = router({
       ].join("\n");
 
       const content: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail: "auto" } }> = [
-        { type: "text", text: `${detailLines}\n\n위 정보를 바탕으로 선택한 영상 모델에 바로 붙여 넣을 수 있는 한국어 제작 프롬프트를 디렉터처럼 작성하세요. 시간적 연속성, 피사체 동선, 카메라, 조명, 공간적 가림 관계를 구체적으로 다루세요. VFX 덧방일 때는 사용자가 지시한 수정 대상만 바꾸고, 보존 지시를 프롬프트의 앞부분과 품질 제약에 명확히 반복하세요.` },
+        { type: "text", text: `${detailLines}\n\n위 정보를 바탕으로 선택한 영상 모델에 바로 붙여 넣을 수 있는 제작 프롬프트를 디렉터처럼 작성하세요. 시간적 연속성, 피사체 동선, 카메라, 조명, 공간적 가림 관계를 구체적으로 다루세요. Hailuo(H3) 프리셋이면 참조 지시 → 핵심 콘셉트 → 샷별 진행 순서를 지키고 integrated_multimodal_description, overall_soundscape, non_diegetic_music 세 구역을 포함하세요. Seedance 프리셋이면 멀티샷 전개와 타임코드, 참조별 역할, 컷 사이의 인물·스타일 연속성을 우선하세요. VFX 덧방일 때는 사용자가 지시한 수정 대상만 바꾸고, 보존 지시를 프롬프트의 앞부분과 품질 제약에 명확히 반복하세요.` },
       ];
       input.mediaReferences.filter((reference) => reference.type === "image" && reference.dataUrl).sort((a, b) => a.order - b.order).forEach((reference) => {
         content.push({ type: "text", text: `Image ${reference.order} / ${reference.role} / ${reference.name}` });
