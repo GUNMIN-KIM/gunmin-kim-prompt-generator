@@ -1,5 +1,13 @@
 {
   "version": "7",
   "dialect": "mysql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1788163000944,
+      "tag": "0000_melted_mac_gargan",
+      "breakpoints": true
+    }
+  ]
 }
