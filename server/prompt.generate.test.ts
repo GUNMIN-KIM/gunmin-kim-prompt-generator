@@ -16,8 +16,11 @@ describe("prompt.generate", () => {
     await expect(caller.prompt.generate({
       subject: "",
       style: "",
-      composition: "",
+      motion: "",
+      camera: "",
       lighting: "",
+      transition: "",
+      pacing: "",
       exclude: "",
       directions: "",
     })).rejects.toThrow();
@@ -28,8 +31,11 @@ describe("prompt.generate", () => {
     await expect(caller.prompt.generate({
       subject: "유리 온실 속 작은 나무",
       style: "",
-      composition: "",
+      motion: "",
+      camera: "",
       lighting: "",
+      transition: "",
+      pacing: "",
       exclude: "",
       directions: "",
       referenceImage: "x".repeat(4_500_001),
