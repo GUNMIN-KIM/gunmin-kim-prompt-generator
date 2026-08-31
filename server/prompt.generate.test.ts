@@ -41,4 +41,17 @@ describe("prompt.generate", () => {
       referenceImage: "x".repeat(4_500_001),
     })).rejects.toThrow();
   });
+
+  it("rejects video analyses that exceed the detailed sampling safety limit", async () => {
+    const caller = appRouter.createCaller(createContext());
+    const frames = Array.from({ length: 33 }, (_, index) => ({
+      timestamp: index,
+      dataUrl: "data:image/jpeg;base64,AA==",
+    }));
+
+    await expect(caller.analysis.video({
+      meta: { duration: 33, width: 1920, height: 1080, aspectRatio: "16:9" },
+      frames,
+    })).rejects.toThrow();
+  });
 });
