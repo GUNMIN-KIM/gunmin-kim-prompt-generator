@@ -1,0 +1,44 @@
+import { chromium } from "playwright";
+
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+const preview = "https://3000-i08uhqua2kef559imvnm0-74effd6b.sg2.manus.computer/";
+await page.goto(preview, { waitUntil: "networkidle" });
+
+const imageSection = page.locator(".reference-subsection").filter({ hasText: "IMAGE REFERENCES" });
+const videoSection = page.locator(".reference-subsection").filter({ hasText: "VIDEO REFERENCES" });
+await page.locator("button.mode-choice").filter({ hasText: "Image" }).click();
+if (!(await imageSection.count()) || await videoSection.count()) throw new Error("Image mode did not isolate image references");
+await page.locator("button.mode-choice").filter({ hasText: "Video" }).click();
+if (!(await videoSection.count()) || await imageSection.count()) throw new Error("Video mode did not isolate video references");
+await page.locator("button.mode-choice").filter({ hasText: "Text" }).click();
+if (!(await imageSection.count()) || !(await videoSection.count())) throw new Error("Text mode did not restore mixed reference sections");
+
+const imageInput = page.locator('input[type="file"][accept*="image"]').last();
+await imageInput.setInputFiles(["/tmp/ref1.png"]);
+await page.waitForTimeout(250);
+if (!(await page.getByText(/Image 1/).count())) throw new Error("Image 1 was not rendered after upload");
+if (!(await page.getByText(/1 \/ 6/).count())) throw new Error("Image counter did not update");
+await imageInput.setInputFiles(["/tmp/ref2.png"]);
+await page.waitForTimeout(250);
+if (!(await page.getByText(/Image 2/).count())) throw new Error("Image 2 was not rendered after second upload");
+const roles = page.locator("select");
+await roles.first().selectOption("background");
+if ((await roles.first().inputValue()) !== "background") throw new Error("Role was not applied");
+const notes = page.locator('input[placeholder*="유지할 요소"]');
+await notes.first().fill("배경의 네온 색감 유지");
+if ((await notes.first().inputValue()) !== "배경의 네온 색감 유지") throw new Error("Reference note was not applied");
+await page.locator("article.reference-card").first().locator('button[aria-label*="제거"]').click();
+await page.waitForTimeout(200);
+if (!(await page.getByText(/Image 1/).count())) throw new Error("Image 1 was not preserved after removal/reorder");
+await imageInput.evaluate((input) => { input.value = ""; });
+await imageInput.setInputFiles(["/tmp/ref2.png"]);
+await page.waitForTimeout(500);
+const videoInput = page.locator('input[type="file"][accept*="video"]').last();
+await videoInput.setInputFiles(["/tmp/ref-video.mp4"]);
+await page.waitForTimeout(1800);
+if (!(await page.getByText(/Video 1/).count())) throw new Error("Video 1 was not rendered after upload");
+const videoCard = page.locator("article.reference-card").filter({ hasText: "ref-video.mp4" });
+if (!(await videoCard.count())) throw new Error("Video reference card was not rendered");
+console.log(JSON.stringify({ modes: "text/image/video", image_slots_after_add: await page.getByRole("button", { name: /Add Image/ }).innerText(), role: await roles.first().inputValue(), note: await notes.first().inputValue(), video_card: true }));
+await browser.close();
