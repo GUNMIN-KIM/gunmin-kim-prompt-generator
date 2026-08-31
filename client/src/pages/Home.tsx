@@ -129,7 +129,7 @@ export default function Home() {
       <section className="hero">
         <div>
           <p className="kicker"><span /> A elegant and perfect style</p>
-          <h1>상상을 선명한<br /><em>장면</em>으로 다듬다.</h1>
+          <h1>AI PROMPT<br /><em>GENERATOR</em></h1>
           <p className="hero-copy">장면의 핵심을 입력하면 이미지 모델이 이해할 수 있는 언어로 정제하고, 아직 비어 있는 시각적 디테일까지 제안합니다.</p>
         </div>
         <div className="hero-note"><span>01</span><p>Describe<br />your vision.</p></div>
