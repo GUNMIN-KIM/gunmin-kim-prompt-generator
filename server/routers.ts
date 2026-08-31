@@ -166,10 +166,10 @@ function readJson<T>(response: { choices?: Array<{ message?: { content?: unknown
 function presetInstruction(model: (typeof modelPresets)[number]): string {
   const instructions: Record<(typeof modelPresets)[number], string> = {
     general: "장면, 피사체, 액션, 카메라, 조명, 품질 제약을 균형 잡힌 하나의 제작용 프롬프트로 구성합니다.",
-    seedance: "Seedance용 멀티모달 디렉터 프롬프트로 작성합니다. 각 Image/Video 참조에 하나의 역할을 부여하고 @Image 1처럼 명시합니다. 멀티샷이면 [Shot 1], [Shot 2] 순서로 구성하고 컷이 발생하는 시점을 초 단위로 표시하며, 각 샷에 피사체 행동·카메라 이동·구도 변화를 하나의 연속된 동작으로 씁니다. 참조에서 유지할 인물·소품·공간과 새로 바꿀 요소를 분리하고, 복잡한 상호작용도 원인→행동→결과 순서로 정리합니다. 사용자가 요청한 경우에만 대사·환경음·음악을 장면 흐름에 동기화합니다.",
-    kling: "피사체의 행동 순서, 렌즈 관점, 카메라 동작, 물리적으로 자연스러운 모션을 선명한 명령형 문장으로 우선합니다. 장면마다 카메라 주동작은 하나만 둡니다.",
+    seedance: "Seedance 2.5/2.0용 멀티모달 디렉터·편집 프롬프트로 작성합니다. 사용자가 화면에서 제공한 실제 자산 토큰(@영상1, @이미지1, @오디오1)을 그대로 사용하고 각 자산에 역할을 부여합니다. 새 생성은 목표·참조 역할·주제와 장면·단계별 시퀀스·카메라·사운드·연속성 순서로, 편집은 SOURCE VIDEO → EDIT TARGET(대상·위치·시간) → CHANGE(A→B) → PRESERVE(인물·액팅·카메라·공간·오디오) → PHYSICAL MATCH 순서로 작성합니다. 멀티샷이면 [Shot 1], [Shot 2]와 컷 시점을 표시하고, 각 단계에 하나의 주된 사건과 명확한 종료 상태를 둡니다. 지정 영역 밖 재생성을 금지하고, 여러 편집이 충돌하면 단계별 작업으로 분리하도록 제안합니다.",
+    kling: "Kling 3.0 Omni용 원본 보존형 편집 프롬프트로 작성합니다. 반드시 SOURCE LOCK → PRESERVE → EDIT ONLY → CHANGE → PHYSICAL MATCH → KEEP EVERYTHING ELSE UNCHANGED 순서를 지킵니다. 수정 대상은 화면 위치와 시간 구간까지 좁혀 쓰고, 인물·얼굴·액팅·의상·카메라·프레이밍·렌즈 원근·배경 구조를 명시적으로 잠급니다. VFX나 교체는 국소 편집으로 선언하며 원본 전체를 다시 생성하지 않습니다. 새 요소의 원근·깊이·가림·그림자·반사·모션 블러를 원본과 맞추고, 카메라나 인물을 바꾸지 말라는 조건을 필요한 경우 영어 잠금 문구로 반복합니다.",
     veo: "시네마틱한 장면 설정, 행동의 원인과 결과, 명확한 시간 전개, 촬영 의도, 분위기와 환경음을 포함하는 서술형 프롬프트로 구성합니다.",
-    hailuo: "MiniMax H3 전용 구조로 작성합니다. 참조가 있으면 프롬프트 첫 부분에 각 파일의 역할을 @Image 1, @Video 1 형식으로 선언하고, 그 다음 한 문장의 핵심 콘셉트와 시간 순서의 샷별 행동을 작성합니다. 출력은 integrated_multimodal_description, overall_soundscape, non_diegetic_music 세 구역을 명확히 구분합니다. 첫/마지막 프레임 작업은 프레임 정렬 지시를 첫 줄에 두고, 샷마다 보이는 행동·카메라 이동·대사·화면 텍스트를 구체적으로 씁니다. 카메라 용어는 Push In, Pan, Tracking Shot처럼 명확히 쓰고, 음향은 인물이 듣는 소리와 관객만 듣는 음악을 분리합니다.",
+    hailuo: "MiniMax H3 전용 구조로 작성합니다. T2VA/I2VA/FL2VA/L2VA 중 입력 작업을 먼저 판별하고, R2V·Ref2VA 또는 인물 교체처럼 전체 참조 모드면 subject_definitions → summary → retention_analysis → detailed_description → overall_soundscape → non_diegetic_music 여섯 구역을 사용합니다. 참조는 <Subject N>, <Picture N>, <Video N>, <Audio N> 라벨을 일관되게 유지하고 fully_preserved·partially_preserved·attribute_transfer·weak_reference 같은 보존 관계를 명시합니다. 기본 모드에서는 참조·프레임 정렬 지시 → integrated_multimodal_description → overall_soundscape → non_diegetic_music 순서를 사용합니다. 샷마다 보이는 행동·카메라 이동·대사·화면 텍스트를 시간 순서로 구체화하고, 카메라 용어는 Push In, Pan, Tracking Shot처럼 명확히 씁니다. 음향은 인물이 듣는 소리와 관객만 듣는 음악을 분리하며, 대사와 화면 텍스트는 원문을 보존합니다.",
   };
   return instructions[model];
 }
@@ -295,7 +295,7 @@ export const appRouter = router({
       ].join("\n");
 
       const content: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail: "auto" } }> = [
-        { type: "text", text: `${detailLines}\n\n위 정보를 바탕으로 선택한 영상 모델에 바로 붙여 넣을 수 있는 제작 프롬프트를 디렉터처럼 작성하세요. 시간적 연속성, 피사체 동선, 카메라, 조명, 공간적 가림 관계를 구체적으로 다루세요. Hailuo(H3) 프리셋이면 참조 지시 → 핵심 콘셉트 → 샷별 진행 순서를 지키고 integrated_multimodal_description, overall_soundscape, non_diegetic_music 세 구역을 포함하세요. Seedance 프리셋이면 멀티샷 전개와 타임코드, 참조별 역할, 컷 사이의 인물·스타일 연속성을 우선하세요. VFX 덧방일 때는 사용자가 지시한 수정 대상만 바꾸고, 보존 지시를 프롬프트의 앞부분과 품질 제약에 명확히 반복하세요.` },
+        { type: "text", text: `${detailLines}\n\n위 정보를 바탕으로 선택한 영상 모델에 바로 붙여 넣을 수 있는 제작 프롬프트를 디렉터처럼 작성하세요. 시간적 연속성, 피사체 동선, 카메라, 조명, 공간적 가림 관계를 구체적으로 다루세요. Hailuo(H3) 프리셋이면 작업 유형에 맞는 참조 라벨·보존 분석·오디오 구역을 포함하고, Seedance 프리셋이면 멀티샷 전개와 타임코드·자산 토큰·편집 범위·보존 목록을 우선하세요. Kling 프리셋으로 원본 편집을 할 때는 SOURCE LOCK과 EDIT ONLY를 프롬프트 앞부분에 두고 전체 재생성을 금지하세요. VFX 덧방일 때는 사용자가 지시한 수정 대상만 바꾸고, 보존 지시를 프롬프트의 앞부분과 품질 제약에 명확히 반복하세요.` },
       ];
       input.mediaReferences.filter((reference) => reference.type === "image" && reference.dataUrl).sort((a, b) => a.order - b.order).forEach((reference) => {
         content.push({ type: "text", text: `Image ${reference.order} / ${reference.role} / ${reference.name}` });
