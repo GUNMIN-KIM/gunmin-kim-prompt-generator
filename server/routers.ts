@@ -27,6 +27,20 @@ const videoMetaInput = z.object({
   aspectRatio: z.string().min(1).max(30),
 });
 
+const mediaReferenceInput = z.object({
+  id: z.string().min(1).max(80),
+  type: z.enum(["image", "video"]),
+  name: z.string().min(1).max(255),
+  dataUrl: z.string().startsWith("data:").max(4_500_000).optional(),
+  size: z.number().int().min(0).max(250 * 1024 * 1024),
+  role: z.enum(["subject", "background", "outfit", "prop", "lighting", "motion", "camera", "first_frame", "last_frame", "fx"]),
+  note: z.string().max(600).default(""),
+  order: z.number().int().min(1).max(9),
+  analysis: z.string().max(3_000).optional(),
+  meta: videoMetaInput.optional(),
+  frames: z.array(videoFrameInput).max(32).optional(),
+});
+
 const promptInput = z.object({
   subject: z.string().min(1).max(4_000),
   style: z.string().max(600),
@@ -37,13 +51,20 @@ const promptInput = z.object({
   pacing: z.string().max(600),
   exclude: z.string().max(1_200),
   directions: z.string().max(1_200),
-  referenceImage: z.string().max(4_500_000).optional(),
+  mediaReferences: z.array(mediaReferenceInput).max(9).default([]),
   inputMode: z.enum(inputModes).default("text"),
   outputMode: z.enum(outputModes).default("new_video"),
   modelPreset: z.enum(modelPresets).default("general"),
   outputLength: z.enum(outputLengths).default("standard"),
   analysisNotes: z.string().max(6_000).default(""),
   timeline: z.array(timelineItemInput).max(12).default([]),
+}).superRefine(({ mediaReferences }, ctx) => {
+  const imageCount = mediaReferences.filter((reference) => reference.type === "image").length;
+  const videoCount = mediaReferences.filter((reference) => reference.type === "video").length;
+  const totalBytes = mediaReferences.reduce((sum, reference) => sum + reference.size, 0);
+  if (imageCount > 6) ctx.addIssue({ code: "custom", path: ["mediaReferences"], message: "이미지 참조는 최대 6개까지 사용할 수 있습니다." });
+  if (videoCount > 3) ctx.addIssue({ code: "custom", path: ["mediaReferences"], message: "영상 참조는 최대 3개까지 사용할 수 있습니다." });
+  if (totalBytes > 250 * 1024 * 1024) ctx.addIssue({ code: "custom", path: ["mediaReferences"], message: "멀티 참조 전체 용량이 너무 큽니다." });
 });
 
 const imageAnalysisInput = z.object({
@@ -94,6 +115,18 @@ const visualAnalysisSchema = {
     preservationNotes: { type: "array", items: { type: "string" } },
   },
   required: ["summary", "fields", "scene", "person", "composition", "action", "colorMood", "timeline", "preservationNotes"],
+  additionalProperties: false,
+} as const;
+
+const integratedAnalysisSchema = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    priorityOrder: { type: "array", items: { type: "string" } },
+    conflicts: { type: "array", items: { type: "string" } },
+    synthesisNotes: { type: "array", items: { type: "string" } },
+  },
+  required: ["summary", "priorityOrder", "conflicts", "synthesisNotes"],
   additionalProperties: false,
 } as const;
 
@@ -196,6 +229,19 @@ export const appRouter = router({
       });
       return readJson<AnalysisResult>(response);
     }),
+    integrated: publicProcedure.input(z.object({
+      subject: z.string().max(4_000).default(""),
+      mediaReferences: z.array(mediaReferenceInput).min(1).max(9),
+    })).mutation(async ({ input }) => {
+      const content: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail: "auto" } }> = [{ type: "text", text: `사용자 장면 설명: ${input.subject || "없음"}\n모든 참조를 하나의 비디오 설계로 통합 분석하세요. 각 참조의 role과 order를 지키고, 충돌 시 subject/background/outfit 같은 시각 보존 참조를 우선한 뒤 motion/camera/lighting 참조를 움직임 규칙으로 정리하세요. 가장 먼저 들어온 참조를 primary reference로 보고, 사용자 note와 개별 분석을 근거로 예외를 명시하세요.` }];
+      [...input.mediaReferences].sort((a, b) => a.order - b.order).forEach((reference) => {
+        content.push({ type: "text", text: `${reference.type === "image" ? "Image" : "Video"} ${reference.order} | role=${reference.role} | note=${reference.note || "없음"} | analysis=${reference.analysis || "없음"}` });
+        if (reference.type === "image" && reference.dataUrl) content.push({ type: "image_url", image_url: { url: reference.dataUrl, detail: "auto" } });
+        reference.frames?.forEach((frame) => content.push({ type: "image_url", image_url: { url: frame.dataUrl, detail: "auto" } }));
+      });
+      const response = await invokeLLM({ model: "gemini-3-flash-preview", max_tokens: 4_000, messages: [{ role: "system", content: mediaSystemInstruction }, { role: "user", content }], response_format: { type: "json_schema", json_schema: { name: "integrated_multireference_analysis", strict: true, schema: integratedAnalysisSchema } } });
+      return readJson<{ summary: string; priorityOrder: string[]; conflicts: string[]; synthesisNotes: string[] }>(response);
+    }),
     video: publicProcedure.input(videoAnalysisInput).mutation(async ({ input }) => {
       const orderedFrames = [...input.frames].sort((a, b) => a.timestamp - b.timestamp);
       const content: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail: "auto" } }> = [
@@ -227,7 +273,7 @@ export const appRouter = router({
         ? input.timeline.map(item => `${item.time}: ${item.description}`).join("\n")
         : "분석된 타임라인 없음";
       const detailLines = [
-        `입력 방식: ${input.inputMode}`,
+        `입력 방식: ${input.inputMode} + 멀티미디어 혼합 참조`,
         `최종 출력 모드: ${modeLabel(input.outputMode)}`,
         `대상 모델 프리셋: ${modelLabel(input.modelPreset)}`,
         `만들거나 편집할 핵심 장면: ${input.subject}`,
@@ -241,6 +287,8 @@ export const appRouter = router({
         `시간축 분석(사용자가 수정 가능):\n${analysisTimeline}`,
         `제외 요소: ${input.exclude || "특별한 제외 요소 없음"}`,
         `사용자가 지정한 변경/추가 지시: ${input.directions || "없음"}`,
+        `역할 기반 멀티 참조 목록:\n${input.mediaReferences.length ? input.mediaReferences.sort((a, b) => a.order - b.order).map((reference) => `${reference.type === "image" ? "Image" : "Video"} ${reference.order} | role=${reference.role} | name=${reference.name} | note=${reference.note || "없음"} | analysis=${reference.analysis || "개별 분석 없음"}`).join("\n") : "참조 없음"}`,
+        `참조 우선순위 규칙: Image 1 또는 가장 낮은 order를 primary reference로 취급. subject/background/outfit/prop는 시각 보존 우선, first_frame/last_frame은 시간축 경계 우선, motion/camera/lighting/fx는 동작·연출 규칙으로 적용. 충돌 시 primary reference의 인물·환경·의상을 보존하고, motion/camera/lighting은 보존 범위 안에서 조정하며, 해결되지 않은 충돌은 결과의 제안과 보존 조건에 명시.`,
         `출력 모드 원칙: ${outputModeInstruction(input.outputMode)}`,
         `모델별 구조 원칙: ${presetInstruction(input.modelPreset)}`,
         `출력 분량: ${lengthInstruction(input.outputLength)}`,
@@ -249,7 +297,14 @@ export const appRouter = router({
       const content: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail: "auto" } }> = [
         { type: "text", text: `${detailLines}\n\n위 정보를 바탕으로 선택한 영상 모델에 바로 붙여 넣을 수 있는 한국어 제작 프롬프트를 디렉터처럼 작성하세요. 시간적 연속성, 피사체 동선, 카메라, 조명, 공간적 가림 관계를 구체적으로 다루세요. VFX 덧방일 때는 사용자가 지시한 수정 대상만 바꾸고, 보존 지시를 프롬프트의 앞부분과 품질 제약에 명확히 반복하세요.` },
       ];
-      if (input.referenceImage) content.push({ type: "image_url", image_url: { url: input.referenceImage, detail: "auto" } });
+      input.mediaReferences.filter((reference) => reference.type === "image" && reference.dataUrl).sort((a, b) => a.order - b.order).forEach((reference) => {
+        content.push({ type: "text", text: `Image ${reference.order} / ${reference.role} / ${reference.name}` });
+        content.push({ type: "image_url", image_url: { url: reference.dataUrl!, detail: "auto" } });
+      });
+      input.mediaReferences.filter((reference) => reference.type === "video" && reference.frames?.length).sort((a, b) => a.order - b.order).forEach((reference) => {
+        content.push({ type: "text", text: `Video ${reference.order} / ${reference.role} / ${reference.name} — 시간 순서 키프레임` });
+        reference.frames?.forEach((frame, index) => { content.push({ type: "text", text: `Video ${reference.order} keyframe ${index + 1} / ${frame.timestamp.toFixed(2)}초` }); content.push({ type: "image_url", image_url: { url: frame.dataUrl, detail: "auto" } }); });
+      });
 
       const response = await invokeLLM({
         model: "gemini-3-flash-preview",
