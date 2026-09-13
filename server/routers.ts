@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
+import { ENV } from "./_core/env";
 import { invokeLLM } from "./_core/llm";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
@@ -213,7 +214,7 @@ export const appRouter = router({
   analysis: router({
     image: publicProcedure.input(imageAnalysisInput).mutation(async ({ input }) => {
       const response = await invokeLLM({
-        model: "gemini-3-flash-preview",
+        model: ENV.llmModel,
         max_tokens: 4_000,
         messages: [
           { role: "system", content: mediaSystemInstruction },
@@ -239,7 +240,7 @@ export const appRouter = router({
         if (reference.type === "image" && reference.dataUrl) content.push({ type: "image_url", image_url: { url: reference.dataUrl, detail: "auto" } });
         reference.frames?.forEach((frame) => content.push({ type: "image_url", image_url: { url: frame.dataUrl, detail: "auto" } }));
       });
-      const response = await invokeLLM({ model: "gemini-3-flash-preview", max_tokens: 4_000, messages: [{ role: "system", content: mediaSystemInstruction }, { role: "user", content }], response_format: { type: "json_schema", json_schema: { name: "integrated_multireference_analysis", strict: true, schema: integratedAnalysisSchema } } });
+      const response = await invokeLLM({ model: ENV.llmModel, max_tokens: 4_000, messages: [{ role: "system", content: mediaSystemInstruction }, { role: "user", content }], response_format: { type: "json_schema", json_schema: { name: "integrated_multireference_analysis", strict: true, schema: integratedAnalysisSchema } } });
       return readJson<{ summary: string; priorityOrder: string[]; conflicts: string[]; synthesisNotes: string[] }>(response);
     }),
     video: publicProcedure.input(videoAnalysisInput).mutation(async ({ input }) => {
@@ -256,7 +257,7 @@ export const appRouter = router({
       });
 
       const response = await invokeLLM({
-        model: "gemini-3-flash-preview",
+        model: ENV.llmModel,
         max_tokens: 8_000,
         messages: [
           { role: "system", content: mediaSystemInstruction },
@@ -307,10 +308,10 @@ export const appRouter = router({
       });
 
       const response = await invokeLLM({
-        model: "gemini-3-flash-preview",
+        model: ENV.llmModel,
         max_tokens: input.outputLength === "detailed" ? 8_000 : input.outputLength === "standard" ? 4_500 : 2_500,
         messages: [
-          { role: "system", content: "당신은 영상 디렉터이자 비디오 생성 프롬프트 에디터입니다. 한국어로 답하고 추상적인 표현보다 피사체의 동선·속도·카메라 움직임·렌즈·빛·전환·시간적 연속성을 구체적으로 보완합니다. 참조 이미지 또는 영상 분석이 있으면 보이는 시각적 특징만 활용하며 실제 인물의 신원을 식별하거나 추측하지 않습니다. 원본 영상 편집과 VFX 덧방에서는 수정 범위를 엄격히 분리하고, 사용자가 지정하지 않은 인물·카메라·프레이밍·배경을 보존합니다. JSON만 출력합니다." },
+          { role: "system", content: "당신은 Google Gemma 4 기반의 영상 디렉터이자 비디오 생성 프롬프트 에디터입니다. 한국어로 답하고 추상적인 표현보다 피사체의 동선·속도·카메라 움직임·렌즈·빛·전환·시간적 연속성을 구체적으로 보완합니다. 참조 이미지 또는 영상 분석이 있으면 보이는 시각적 특징만 활용하며 실제 인물의 신원을 식별하거나 추측하지 않습니다. 성인 간의 로맨스·긴장감·관능적 분위기 같은 성숙한 테마는 비노골적으로 표현할 수 있지만, 노골적인 성행위·성기 묘사·포르노성 지시, 미성년자, 비동의 또는 착취적 성적 상황은 생성하지 말고 비노골적인 대안으로 바꿉니다. 원본 영상 편집과 VFX 덧방에서는 수정 범위를 엄격히 분리하고, 사용자가 지정하지 않은 인물·카메라·프레이밍·배경을 보존합니다. JSON만 출력합니다." },
           { role: "user", content },
         ],
         response_format: { type: "json_schema", json_schema: { name: "video_prompt_result", strict: true, schema: promptOutputSchema } },
